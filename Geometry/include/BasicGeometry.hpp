@@ -88,7 +88,7 @@ namespace geometry {
 
             // remove duplicate points
             std::vector<indextype> result;
-            result.clear();
+            result.clear(); 
             int nPoints = points.size();
             for (int i = 0, j = 1; i < nPoints; i++, j = (j + 1) % nPoints)
                 if (points[i] != points[j])

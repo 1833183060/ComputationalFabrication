@@ -273,9 +273,9 @@ namespace fab_translation {
                     p1 = contour[i], p2 = contour[j];
                     if (p1(dim) > p2(dim))
                         std::swap(p1, p2);
-                    if (std::fabs(p2(dim) - p1(dim)) > 1e-6) {
-                        idxstart = (int)std::ceil(p1(dim) / _infill_dx + 1e-6); // leave out p1 to avoid ambiguity
-                        idxend = (int)std::floor(p2(dim) / _infill_dx + 1e-6);
+                    if (std::fabs(p2(dim) - p1(dim)) > (T)1e-6) {
+                        idxstart = (int)std::ceil(p1(dim) / _infill_dx + (T)1e-6); // leave out p1 to avoid ambiguity
+                        idxend = (int)std::floor(p2(dim) / _infill_dx + (T)1e-6);
                         for (int idx = idxstart; idx <= idxend; idx++) {
                             T delta = (_infill_dx * idx - p1(dim)) / (p2(dim) - p1(dim));
                             intersect_points[idx - bot].emplace_back(p1 + (p2 - p1) * delta);
