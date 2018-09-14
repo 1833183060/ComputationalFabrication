@@ -9,7 +9,7 @@
 namespace mesh {
 
     template<typename T>
-    static bool Vertex_Cmp(Vector3<T> A, Vector3<T> B) {
+    static inline bool Vertex_Cmp(Vector3<T> A, Vector3<T> B) {
         if (A(0) < B(0) - 1e-7) return true;
         if (A(0) > B(0) + 1e-7) return false;
         if (A(1) < B(1) - 1e-7) return true;

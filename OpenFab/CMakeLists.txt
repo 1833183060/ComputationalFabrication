@@ -29,7 +29,7 @@ target_include_directories(OpenFab PRIVATE ../AutodiffEngine/include)
 target_include_directories(OpenFab PRIVATE ../Mesh/include)
 target_include_directories(OpenFab PRIVATE ../NetworkCommunication/include)
 target_include_directories(OpenFab PRIVATE ../FabTranslation/include)
-
+target_include_directories(OpenFab PRIVATE ../ExternalLibs/libigl/include)
 
 #target_include_directories(OpenFab PRIVATE ${PROJECT_SOURCE_DIR}/../ExternalLibs/eigen-git-mirror/Eigen)
 #target_include_directories(OpenFab PRIVATE ${PROJECT_SOURCE_DIR}/../ExternalLibs/eigen-git-mirror/unsupported)
