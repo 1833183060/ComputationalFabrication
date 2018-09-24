@@ -81,7 +81,7 @@
 //     return 0;
 // }
 
-// Task 1
+// Task 1-3
 int main(int argc, char **argv) {
     // load input model
     mesh::TriMesh<double> tri_mesh(std::string(PROJECT_SOURCE_DIR) + "/data/bunny_watertight.stl", 0.01);

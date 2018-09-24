@@ -5,6 +5,8 @@
 #include "cinolib/meshes/meshes.h"
 #include <ctime>
 #include <chrono>
+#include <unordered_set>
+#include <unordered_map>
 
 namespace fab_translation {
     template <typename T>
@@ -80,7 +82,6 @@ namespace fab_translation {
                     /* What kinds of intersections should be added into intersection edge list? */
                     if ((int)intersections.size() == 2) {
                         intersections_one_plane.push_back(std::make_pair(intersections[0], intersections[1]));
-                        intersections_one_plane.push_back(std::make_pair(intersections[1], intersections[0]));
                     }
                 }
 
@@ -143,7 +144,6 @@ namespace fab_translation {
                     std::vector<indextype> intersections = triangle.IntersectPlane(plane);
                     if ((int)intersections.size() == 2) {
                         intersection_edges[idx].push_back(std::make_pair(intersections[0], intersections[1]));
-                        intersection_edges[idx].push_back(std::make_pair(intersections[1], intersections[0]));
                     }
                 }
             }
@@ -170,7 +170,7 @@ namespace fab_translation {
                 contours_one_plane.clear();
 
                 // create forward star representation
-                std::map<indextype, std::unordered_set<indextype>> fs;
+                std::unordered_map<indextype, std::unordered_set<indextype>> fs;
                 fs.clear();
                 for (auto &e : edges) {
                     fs[e.first].insert(e.second);
