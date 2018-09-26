@@ -1,6 +1,7 @@
 #pragma once
 #include <Eigen/Dense>
 #include <vector>
+#include <iostream>
 
 // index type
 typedef unsigned long long indextype;
@@ -8,6 +9,9 @@ typedef unsigned long long indextype;
 namespace geometry {
     template <typename T>
     using Vector3 = Eigen::Matrix<T, 3, 1>;
+
+    template <typename T>
+    using Matrix3 = Eigen::Matrix<T, 3, 3>;
 
     // the plane is represented by (x - _p) /dot _normal = 0
     template <typename T>
@@ -45,6 +49,10 @@ namespace geometry {
             _vertices[0] = v0;
             _vertices[1] = v1;
             _vertices[2] = v2;
+
+            // Add normal calculation
+            updateNormal();
+            // calcInvMatrix();
         }
 
         Vector3<T>* vertices() { return _vertices; }
@@ -57,6 +65,10 @@ namespace geometry {
         }
         int *indices() { return _idx; }
         int &indices(int idx) { return _idx[idx]; }
+
+        Vector3<T> normal() { return _normal; }
+        void updateNormal() { _normal = (_vertices[1] - _vertices[0]).cross(_vertices[2] - _vertices[0]); }
+        void updateInvMatrix() { calcInvMatrix(); }
 
         /* Implement triangle plane intersection.
             Input is a plane, output is a list of intersection points
@@ -96,11 +108,43 @@ namespace geometry {
             
             return std::move(result);
         }
+
+        // Assignment 2: implement ray-triangle intersection.
+        // The ray is defined as r(t) = origin + t * dir.
+        // You should return a scalar t such that r(t) is the intersection point. Which value
+        // to return for the case of no intersections is up to you. You can also change the
+        // signature of this function as you see fit.
+        const T IntersectRay(const Vector3<T>& origin, const Vector3<T>& dir) const {
+            /* Assignment 2. */
+            /* Implement your code here */
+            T t = -(origin - _vertices[0]).dot(_normal) / dir.dot(_normal);
+            if (t < 0) return -1e10;
+
+            // Check whether intersection point is located within the triangle or not
+            Vector3<T> target = origin + t * dir;
+            T d1 = (target - _vertices[0]).cross(_vertices[1] - _vertices[0]).dot(_normal);
+            T d2 = (target - _vertices[1]).cross(_vertices[2] - _vertices[1]).dot(_normal);
+            T d3 = (target - _vertices[2]).cross(_vertices[0] - _vertices[2]).dot(_normal);
+            return (d1 * d2 >= 0.0 && d1 * d3 >= 0.0 && d2 * d3 >= 0.0) ? t : -1e10;
+        }
         
     private:
         inline T ftz(T x) { return std::fabs(x) < 1e-6 ? 0 : x; }
 
+        inline void calcInvMatrix() {
+            Matrix3<T> _coords;
+            for (int i = 0; i < 3; i++)
+                _coords.col(i) = _vertices[i];
+            _inv = _coords.inverse();
+        }
+
         Vector3<T> _vertices[3];
         int _idx[3];
+
+        // Norm of triangle
+        Vector3<T> _normal;
+
+        // Inverted matrix
+        Matrix3<T> _inv;
     };
 }
