@@ -62,6 +62,41 @@ namespace mesh {
                 for (int j = 0; j < ny; ++j)
                     for (int k = 0; k < nz; ++k)
                         _voxels[i][j][k] = false;
+
+            // Store all intersection points (in parameter t)
+            std::vector<T> vec;
+
+            // Shoot an upright ray from each grid cell on the bottom plane
+            T curx = _pmin(0) + 0.5 * _dx;
+            T curz = _pmin(2);
+            Vector3<T> dir(0, 0, 1);
+            for (int i = 0; i < nx; ++i, curx += _dx) {
+                T cury = _pmin(1) + 0.5 * _dx;
+                for (int j = 0; j < ny; ++j, cury += _dx) {
+                    // Ray-triangle intersection
+                    Vector3<T> origin(curx, cury, curz);
+                    vec.clear();
+                    for (const auto &_tri : _triangles) {
+                        geometry::Triangle<T> tri(_tri[0], _tri[1], _tri[2]);
+                        T t = tri.IntersectRay(origin, dir);
+                        if (t >= 0.0)
+                            vec.push_back(t);
+                    }
+                    if (vec.empty()) continue;
+
+                    // Sort intersection points and eliminate duplication
+                    Deduplicate(vec);
+                    // printf("(%d, %d) - pts: %d\n", i, j, (int)vec.size());
+
+                    // Fill _voxels array
+                    for (int idx = 0; idx + 1 < (int)vec.size(); idx += 2) {
+                        int start = std::max((int)std::ceil(vec[idx] / _dx - 0.5 - 1e-6), 0);
+                        int end = std::min((int)std::floor(vec[idx + 1] / _dx - 0.5 + 1e-6), nz - 1);
+                        for (int k = start; k <= end; ++k)
+                            _voxels[i][j][k] = true;
+                    }
+                }
+            }
         }
 
         void AdvancedVoxelization() {
@@ -73,6 +108,11 @@ namespace mesh {
                 for (int j = 0; j < ny; ++j)
                     for (int k = 0; k < nz; ++k)
                         _voxels[i][j][k] = false;
+
+            // Store intersection points for all rays
+            std::vector<T> vec[nx][ny];
+
+
         }
 
         void AdvancedVoxelizationWithApproximation() {
@@ -156,6 +196,16 @@ namespace mesh {
         Vector3<T> _pmin;    // The min and max corner of the bounding box.
         Eigen::Vector3i _nvoxel;   // The number of voxels along each direction.
         std::vector<std::vector<std::vector<bool>>> _voxels;   // True <-> voxel is occupied.
+
+        // Deduplication of floating-point vector (with error tolerance)
+        void Deduplicate(std::vector<T> &vec) {
+            std::sort(vec.begin(), vec.end());
+            int pos = 0;
+            for (int i = 1; i < (int)vec.size(); ++i)
+                if (vec[i] - vec[pos] > 1e-6) // Ascending order as default
+                    vec[++pos] = vec[i];
+            vec.erase(vec.begin() + pos + 1, vec.end());
+        }
     };
 
 }
