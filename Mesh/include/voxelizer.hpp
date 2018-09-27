@@ -124,57 +124,25 @@ namespace mesh {
 
             // Check each triangle for grid cell coverage
             for (int it = 0; it < nTriangles; ++it) {
-                const Vector3<T> &A = _tris[it].vertices(0);
-                const Vector3<T> &D = _tris[it].vertices(2);
-                Vector3<T> B = _tris[it].vertices(1);
-                Vector3<T> C = B;
+                // Calculate bounding box for each triangle
+                Vector3<T> tmin = std::move(_tris[it].bmin());
+                Vector3<T> tmax = std::move(_tris[it].bmax());
+                if (tmax(0) - tmin(0) < 1e-6 || tmax(1) - tmin(1) < 1e-6)
+                    continue;
+                int xs = std::max((int)std::ceil((tmin(0) - _pmin(0)) / _dx - 0.5 - 1e-6), 0);
+                int xe = std::min((int)std::floor((tmax(0) - _pmin(0)) / _dx - 0.5 + 1e-6), nx - 1);
+                int ys = std::max((int)std::ceil((tmin(1) - _pmin(1)) / _dx - 0.5 - 1e-6), 0);
+                int ye = std::min((int)std::floor((tmax(1) - _pmin(1)) / _dx - 0.5 + 1e-6), ny - 1);
 
-                // Filter vertical triangles
-                if (D(0) - A(0) < 1e-6) continue;
-
-                // Cut triangle into two halves (ABC, BCD)
-                C = std::move(A + (D - A) * ((B(0) - A(0)) / (D(0) - A(0))));
-                if (B(1) > C(1)) std::swap(B, C);
-                
-                int ys, ye, xs, xe;
-                Vector3<T> B1, C1, P;
+                // Shoot rays and check intersection
                 T curx, cury;
-
-                // Check upper triangle ABC
-                if (B(0) - A(0) > 1e-6) {
-                    xs = std::max((int)std::ceil((A(0) - _pmin(0)) / _dx - 0.5 - 1e-6), 0);
-                    xe = std::min((int)std::floor((B(0) - _pmin(0)) / _dx - 0.5 + 1e-6), nx - 1);
-                    curx = _pmin(0) + (xs + 0.5) * _dx;
-                    for (int i = xs; i <= xe; ++i, curx += _dx) {
-                        T ratio = (curx - A(0)) / (B(0) - A(0));
-                        B1 = std::move(A + (B - A) * ratio);
-                        C1 = std::move(A + (C - A) * ratio);
-                        ys = std::max((int)std::ceil((B1(1) - _pmin(1)) / _dx - 0.5 - 1e-6), 0);
-                        ye = std::min((int)std::floor((C1(1) - _pmin(1)) / _dx - 0.5 + 1e-6), ny - 1);
-                        cury = _pmin(1) + (ys + 0.5) * _dx;
-                        for (int j = ys; j <= ye; ++j, cury += _dx) {
-                            P = std::move(B1 + (C1 - B1) * ((cury - B1(1)) / (C1(1) - B1(1))));
-                            rays[i][j].push_back(P(2) - _pmin(2));
-                        }
-                    }
-                }
-
-                // Check lower triangle BCD
-                if (D(0) - B(0) > 1e-6) {
-                    xs = std::max((int)std::ceil((B(0) - _pmin(0)) / _dx - 0.5 - 1e-6), 0);
-                    xe = std::min((int)std::floor((D(0) - _pmin(0)) / _dx - 0.5 + 1e-6), nx - 1);
-                    curx = _pmin(0) + (xs + 0.5) * _dx;
-                    for (int i = xs; i <= xe; ++i, curx += _dx) {
-                        T ratio = (curx - B(0)) / (D(0) - B(0));
-                        B1 = std::move(B + (D - B) * ratio);
-                        C1 = std::move(C + (D - C) * ratio);
-                        ys = std::max((int)std::ceil((B1(1) - _pmin(1)) / _dx - 0.5 - 1e-6), 0);
-                        ye = std::min((int)std::floor((C1(1) - _pmin(1)) / _dx - 0.5 + 1e-6), ny - 1);
-                        cury = _pmin(1) + (ys + 0.5) * _dx;
-                        for (int j = ys; j <= ye; ++j, cury += _dx) {
-                            P = std::move(B1 + (C1 - B1) * ((cury - B1(1)) / (C1(1) - B1(1))));
-                            rays[i][j].push_back(P(2) - _pmin(2));
-                        }
+                curx = _pmin(0) + (xs + 0.5) * _dx;
+                for (int i = xs; i <= xe; ++i, curx += _dx) {
+                    cury = _pmin(1) + (ys + 0.5) * _dx;
+                    for (int j = ys; j <= ye; ++j, cury += _dx) {
+                        T t = _tris[it].IntersectRay(Vector3<T>(curx, cury, _pmin(2)), Vector3<T>(0, 0, 1));
+                        if (t >= 0.0)
+                            rays[i][j].push_back(t);
                     }
                 }
             }
@@ -199,6 +167,7 @@ namespace mesh {
             // Initialization
             const int nx = _nvoxel[0], ny = _nvoxel[1], nz = _nvoxel[2];
             const Vector3<T> _pmin_backup = _pmin;
+            auto &&_voxels_backup = std::move(_voxels);
 
             // Statistics of occupation
             char stat[nx][ny][nz] = {0};
@@ -214,6 +183,8 @@ namespace mesh {
                 Eigen::Quaternion<T> q = std::move(Eigen::Quaternion<T>::UnitRandom());
                 for (int i = 0; i < nTriangles; ++i)
                     _tris[i].rotate(q);
+
+                // Record rotation history
                 q0 = q * q0;
 
                 // Calculate bounding box
@@ -256,9 +227,7 @@ namespace mesh {
 
             // Compute final representation
             _nvoxel[0] = nx, _nvoxel[1] = ny, _nvoxel[2] = nz;
-            _voxels = std::move(std::vector<std::vector<std::vector<bool>>>(_nvoxel[0],
-                std::vector<std::vector<bool>>(_nvoxel[1],
-                    std::vector<bool>(_nvoxel[2], false))));
+            _voxels = _voxels_backup;
             for (int i = 0; i < nx; ++i)
                 for (int j = 0; j < ny; ++j)
                     for (int k = 0; k < nz; ++k)

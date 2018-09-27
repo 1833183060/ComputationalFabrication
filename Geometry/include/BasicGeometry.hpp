@@ -58,6 +58,7 @@ namespace geometry {
             // Add normal calculation
             updateDeltas();
             updateNormal();
+            updateBoundaries();
         }
 
         Vector3<T>* vertices() { return _vertices; }
@@ -71,12 +72,21 @@ namespace geometry {
         int *indices() { return _idx; }
         int &indices(int idx) { return _idx[idx]; }
 
-        Vector3<T> normal() { return _normal; }
+        inline Vector3<T> normal() { return _normal; }
         inline void updateNormal() { _normal = std::move(-_delta[0].cross(_delta[2])); }
+
+        inline Vector3<T> delta(int idx) { return _delta[idx]; }
         inline void updateDeltas() {
             _delta[0] = std::move(_vertices[1] - _vertices[0]);
             _delta[1] = std::move(_vertices[2] - _vertices[1]);
             _delta[2] = std::move(_vertices[0] - _vertices[2]);
+        }
+
+        inline Vector3<T> bmin() { return _bmin; }
+        inline Vector3<T> bmax() { return _bmax; }
+        inline void updateBoundaries() {
+            _bmin = std::move(_vertices[0].cwiseMin(_vertices[1]).cwiseMin(_vertices[2]));
+            _bmax = std::move(_vertices[0].cwiseMax(_vertices[1]).cwiseMax(_vertices[2]));
         }
 
         /* Implement triangle plane intersection.
@@ -149,6 +159,7 @@ namespace geometry {
 
             updateDeltas();
             updateNormal();
+            updateBoundaries();
         }
         
     private:
@@ -160,5 +171,8 @@ namespace geometry {
 
         // Norm of triangle
         Vector3<T> _normal;
+
+        // Bounding box
+        Vector3<T> _bmin, _bmax;
     };
 }
