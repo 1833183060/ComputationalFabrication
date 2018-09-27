@@ -46,6 +46,17 @@ namespace mesh {
             _voxels = std::vector<std::vector<std::vector<bool>>>(_nvoxel.x(),
                 std::vector<std::vector<bool>>(_nvoxel.y(),
                     std::vector<bool>(_nvoxel.z(), false)));
+
+            // Allocate triangle list
+            nTriangles = _triangles.size();
+            _tris = (geometry::Triangle<T> *)std::malloc(sizeof(geometry::Triangle<T>) * nTriangles);
+            for (int i = 0; i < nTriangles; ++i)
+                new (&_tris[i]) geometry::Triangle<T>(_triangles[i][0], _triangles[i][1], _triangles[i][2]);
+        }
+
+        ~Voxelizer() {
+            std::free(_tris);
+            _tris = NULL;
         }
 
         const Vector3<T> pmin() const { return _pmin; }
@@ -64,7 +75,7 @@ namespace mesh {
                         _voxels[i][j][k] = false;
 
             // Store all intersection points (in parameter t)
-            std::vector<T> vec;
+            std::vector<T> rays[nx][ny];
 
             // Shoot an upright ray from each grid cell on the bottom plane
             T curx = _pmin(0) + 0.5 * _dx;
@@ -73,23 +84,22 @@ namespace mesh {
             for (int i = 0; i < nx; ++i, curx += _dx) {
                 T cury = _pmin(1) + 0.5 * _dx;
                 for (int j = 0; j < ny; ++j, cury += _dx) {
+                    std::vector<T> &vec = rays[i][j];
+
                     // Ray-triangle intersection
                     Vector3<T> origin(curx, cury, curz);
-                    vec.clear();
-                    for (const auto &_tri : _triangles) {
-                        geometry::Triangle<T> tri(_tri[0], _tri[1], _tri[2]);
-                        T t = tri.IntersectRay(origin, dir);
+                    for (int it = 0; it < nTriangles; ++it) {
+                        T t = _tris[it].IntersectRay(origin, dir);
                         if (t >= 0.0)
                             vec.push_back(t);
                     }
                     if (vec.empty()) continue;
 
                     // Sort intersection points and eliminate duplication
-                    Deduplicate(vec);
-                    // printf("(%d, %d) - pts: %d\n", i, j, (int)vec.size());
+                    int vecSize = Deduplicate(vec);
 
                     // Fill _voxels array
-                    for (int idx = 0; idx + 1 < (int)vec.size(); idx += 2) {
+                    for (int idx = 0; idx + 1 < vecSize; idx += 2) {
                         int start = std::max((int)std::ceil(vec[idx] / _dx - 0.5 - 1e-6), 0);
                         int end = std::min((int)std::floor(vec[idx + 1] / _dx - 0.5 + 1e-6), nz - 1);
                         for (int k = start; k <= end; ++k)
@@ -110,20 +120,154 @@ namespace mesh {
                         _voxels[i][j][k] = false;
 
             // Store intersection points for all rays
-            std::vector<T> vec[nx][ny];
+            std::vector<T> rays[nx][ny];
 
+            // Check each triangle for grid cell coverage
+            for (int it = 0; it < nTriangles; ++it) {
+                const Vector3<T> &A = _tris[it].vertices(0);
+                const Vector3<T> &D = _tris[it].vertices(2);
+                Vector3<T> B = _tris[it].vertices(1);
+                Vector3<T> C = B;
 
+                // Filter vertical triangles
+                if (D(0) - A(0) < 1e-6) continue;
+
+                // Cut triangle into two halves (ABC, BCD)
+                C = std::move(A + (D - A) * ((B(0) - A(0)) / (D(0) - A(0))));
+                if (B(1) > C(1)) std::swap(B, C);
+                
+                int ys, ye, xs, xe;
+                Vector3<T> B1, C1, P;
+                T curx, cury;
+
+                // Check upper triangle ABC
+                if (B(0) - A(0) > 1e-6) {
+                    xs = std::max((int)std::ceil((A(0) - _pmin(0)) / _dx - 0.5 - 1e-6), 0);
+                    xe = std::min((int)std::floor((B(0) - _pmin(0)) / _dx - 0.5 + 1e-6), nx - 1);
+                    curx = _pmin(0) + (xs + 0.5) * _dx;
+                    for (int i = xs; i <= xe; ++i, curx += _dx) {
+                        T ratio = (curx - A(0)) / (B(0) - A(0));
+                        B1 = std::move(A + (B - A) * ratio);
+                        C1 = std::move(A + (C - A) * ratio);
+                        ys = std::max((int)std::ceil((B1(1) - _pmin(1)) / _dx - 0.5 - 1e-6), 0);
+                        ye = std::min((int)std::floor((C1(1) - _pmin(1)) / _dx - 0.5 + 1e-6), ny - 1);
+                        cury = _pmin(1) + (ys + 0.5) * _dx;
+                        for (int j = ys; j <= ye; ++j, cury += _dx) {
+                            P = std::move(B1 + (C1 - B1) * ((cury - B1(1)) / (C1(1) - B1(1))));
+                            rays[i][j].push_back(P(2) - _pmin(2));
+                        }
+                    }
+                }
+
+                // Check lower triangle BCD
+                if (D(0) - B(0) > 1e-6) {
+                    xs = std::max((int)std::ceil((B(0) - _pmin(0)) / _dx - 0.5 - 1e-6), 0);
+                    xe = std::min((int)std::floor((D(0) - _pmin(0)) / _dx - 0.5 + 1e-6), nx - 1);
+                    curx = _pmin(0) + (xs + 0.5) * _dx;
+                    for (int i = xs; i <= xe; ++i, curx += _dx) {
+                        T ratio = (curx - B(0)) / (D(0) - B(0));
+                        B1 = std::move(B + (D - B) * ratio);
+                        C1 = std::move(C + (D - C) * ratio);
+                        ys = std::max((int)std::ceil((B1(1) - _pmin(1)) / _dx - 0.5 - 1e-6), 0);
+                        ye = std::min((int)std::floor((C1(1) - _pmin(1)) / _dx - 0.5 + 1e-6), ny - 1);
+                        cury = _pmin(1) + (ys + 0.5) * _dx;
+                        for (int j = ys; j <= ye; ++j, cury += _dx) {
+                            P = std::move(B1 + (C1 - B1) * ((cury - B1(1)) / (C1(1) - B1(1))));
+                            rays[i][j].push_back(P(2) - _pmin(2));
+                        }
+                    }
+                }
+            }
+
+            // Fill _voxels array
+            for (int i = 0; i < nx; ++i)
+                for (int j = 0; j < ny; ++j) {
+                    std::vector<T> &vec = rays[i][j];
+                    int vecSize = Deduplicate(vec);
+                    for (int idx = 0; idx + 1 < vecSize; idx += 2) {
+                        int start = std::max((int)std::ceil(vec[idx] / _dx - 0.5 - 1e-6), 0);
+                        int end = std::min((int)std::floor(vec[idx + 1] / _dx - 0.5 + 1e-6), nz - 1);
+                        for (int k = start; k <= end; ++k)
+                            _voxels[i][j][k] = true;
+                    }
+                }
         }
 
         void AdvancedVoxelizationWithApproximation() {
             /* Assignment 2, Part 2.3. */
             /* Implement your code here. */
-            // Fill the _voxels array with the correct flag.
+            // Initialization
             const int nx = _nvoxel[0], ny = _nvoxel[1], nz = _nvoxel[2];
+            const Vector3<T> _pmin_backup = _pmin;
+
+            // Statistics of occupation
+            char stat[nx][ny][nz] = {0};
+
+            // History of rotation
+            Eigen::Quaternion<T> q0 = Eigen::Quaternion<T>::Identity();
+
+            // Main loop: rotate mesh by arbitrary angle and recalculate occupancy information
+            // New occupancy values will be integrated into statistics with nearest neighbor sampling.
+            int iter = 11;
+            while (iter--) {
+                // Mesh rotation
+                Eigen::Quaternion<T> q = std::move(Eigen::Quaternion<T>::UnitRandom());
+                for (int i = 0; i < nTriangles; ++i)
+                    _tris[i].rotate(q);
+                q0 = q * q0;
+
+                // Calculate bounding box
+                _pmin = _tris[0].vertices(0);
+                Vector3<T> pmax = _pmin;
+                for (int i = 0; i < nTriangles; ++i)
+                    for (int j = 0; j < 3; ++j) {
+                        _pmin = _pmin.cwiseMin(_tris[i].vertices(j));
+                        pmax = pmax.cwiseMax(_tris[i].vertices(j));
+                    }
+                _pmin -= Vector3<T>(_dx, _dx, _dx);
+                pmax += Vector3<T>(_dx, _dx, _dx);
+
+                // Allocate occupancy grid
+                for (int i = 0; i < 3; ++i)
+                    _nvoxel[i] = (int)std::ceil((pmax(i) - _pmin(i)) / _dx + 1e-6);
+                _voxels = std::move(std::vector<std::vector<std::vector<bool>>>(_nvoxel[0],
+                    std::vector<std::vector<bool>>(_nvoxel[1],
+                        std::vector<bool>(_nvoxel[2], false))));
+
+                // Voxelization
+                AdvancedVoxelization();
+
+                // Collect result
+                for (int i = 0; i < _nvoxel[0]; ++i)
+                    for (int j = 0; j < _nvoxel[1]; ++j)
+                        for (int k = 0; k < _nvoxel[2]; ++k) {
+                            // Convert coordinates back to original occupancy grid
+                            Vector3<T> coord = std::move(Vector3<T>(i + 0.5, j + 0.5, k + 0.5) * _dx);
+                            Vector3<T> p = std::move(q0.toRotationMatrix().transpose() * (_pmin + coord));
+
+                            int px = (int)std::round((p(0) - _pmin_backup(0)) / _dx - 0.5);
+                            int py = (int)std::round((p(1) - _pmin_backup(1)) / _dx - 0.5);
+                            int pz = (int)std::round((p(2) - _pmin_backup(2)) / _dx - 0.5);
+
+                            if (px >= 0 && px < nx && py >= 0 && py < ny && pz >= 0 && pz < nz)
+                                stat[px][py][pz] += _voxels[i][j][k] ? 1 : -1;
+                        }
+            }
+
+            // Compute final representation
+            _nvoxel[0] = nx, _nvoxel[1] = ny, _nvoxel[2] = nz;
+            _voxels = std::move(std::vector<std::vector<std::vector<bool>>>(_nvoxel[0],
+                std::vector<std::vector<bool>>(_nvoxel[1],
+                    std::vector<bool>(_nvoxel[2], false))));
             for (int i = 0; i < nx; ++i)
                 for (int j = 0; j < ny; ++j)
                     for (int k = 0; k < nz; ++k)
-                        _voxels[i][j][k] = false;
+                        _voxels[i][j][k] = stat[i][j][k] > 0;
+
+            // Restore original values
+            _pmin = _pmin_backup;
+            for (int i = 0; i < nTriangles; ++i)
+                new (&_tris[i]) geometry::Triangle<T>(_triangles[i][0], _triangles[i][1], _triangles[i][2]);
         }
 
         void WriteVoxelToMesh(const std::string& stl_file_name) const {
@@ -197,14 +341,19 @@ namespace mesh {
         Eigen::Vector3i _nvoxel;   // The number of voxels along each direction.
         std::vector<std::vector<std::vector<bool>>> _voxels;   // True <-> voxel is occupied.
 
+        // Triangle object list
+        int nTriangles;
+        geometry::Triangle<T> *_tris = NULL;
+
         // Deduplication of floating-point vector (with error tolerance)
-        void Deduplicate(std::vector<T> &vec) {
+        int Deduplicate(std::vector<T> &vec) {
             std::sort(vec.begin(), vec.end());
             int pos = 0;
             for (int i = 1; i < (int)vec.size(); ++i)
                 if (vec[i] - vec[pos] > 1e-6) // Ascending order as default
                     vec[++pos] = vec[i];
-            vec.erase(vec.begin() + pos + 1, vec.end());
+            // vec.erase(vec.begin() + pos + 1, vec.end());
+            return pos + 1;
         }
     };
 

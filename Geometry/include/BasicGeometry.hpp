@@ -46,13 +46,18 @@ namespace geometry {
     class Triangle {
     public:
         Triangle(Vector3<T> v0, Vector3<T> v1, Vector3<T> v2) {
+            // Pre-order vertices according to Y coordinate
+            if (v0(0) > v1(0)) std::swap(v0, v1);
+            if (v0(0) > v2(0)) std::swap(v0, v2);
+            if (v1(0) > v2(0)) std::swap(v1, v2);
+
             _vertices[0] = v0;
             _vertices[1] = v1;
             _vertices[2] = v2;
 
             // Add normal calculation
+            updateDeltas();
             updateNormal();
-            // calcInvMatrix();
         }
 
         Vector3<T>* vertices() { return _vertices; }
@@ -67,8 +72,12 @@ namespace geometry {
         int &indices(int idx) { return _idx[idx]; }
 
         Vector3<T> normal() { return _normal; }
-        void updateNormal() { _normal = (_vertices[1] - _vertices[0]).cross(_vertices[2] - _vertices[0]); }
-        void updateInvMatrix() { calcInvMatrix(); }
+        inline void updateNormal() { _normal = std::move(-_delta[0].cross(_delta[2])); }
+        inline void updateDeltas() {
+            _delta[0] = std::move(_vertices[1] - _vertices[0]);
+            _delta[1] = std::move(_vertices[2] - _vertices[1]);
+            _delta[2] = std::move(_vertices[0] - _vertices[2]);
+        }
 
         /* Implement triangle plane intersection.
             Input is a plane, output is a list of intersection points
@@ -121,30 +130,35 @@ namespace geometry {
             if (t < 0) return -1e10;
 
             // Check whether intersection point is located within the triangle or not
-            Vector3<T> target = origin + t * dir;
-            T d1 = (target - _vertices[0]).cross(_vertices[1] - _vertices[0]).dot(_normal);
-            T d2 = (target - _vertices[1]).cross(_vertices[2] - _vertices[1]).dot(_normal);
-            T d3 = (target - _vertices[2]).cross(_vertices[0] - _vertices[2]).dot(_normal);
+            Vector3<T> target = std::move(origin + t * dir);
+            T d1 = (target - _vertices[0]).cross(_delta[0]).dot(_normal);
+            T d2 = (target - _vertices[1]).cross(_delta[1]).dot(_normal);
+            T d3 = (target - _vertices[2]).cross(_delta[2]).dot(_normal);
             return (d1 * d2 >= 0.0 && d1 * d3 >= 0.0 && d2 * d3 >= 0.0) ? t : -1e10;
+        }
+
+        // Rotate the triangle by quaternion q
+        void rotate(const Eigen::Quaternion<T> &q) {
+            Matrix3<T> mat = std::move(q.toRotationMatrix());
+            for (int i = 0; i < 3; ++i)
+                _vertices[i] = mat * _vertices[i];
+
+            if (_vertices[0](0) > _vertices[1](0)) std::swap(_vertices[0], _vertices[1]);
+            if (_vertices[0](0) > _vertices[2](0)) std::swap(_vertices[0], _vertices[2]);
+            if (_vertices[1](0) > _vertices[2](0)) std::swap(_vertices[1], _vertices[2]);
+
+            updateDeltas();
+            updateNormal();
         }
         
     private:
         inline T ftz(T x) { return std::fabs(x) < 1e-6 ? 0 : x; }
 
-        inline void calcInvMatrix() {
-            Matrix3<T> _coords;
-            for (int i = 0; i < 3; i++)
-                _coords.col(i) = _vertices[i];
-            _inv = _coords.inverse();
-        }
-
         Vector3<T> _vertices[3];
+        Vector3<T> _delta[3];
         int _idx[3];
 
         // Norm of triangle
         Vector3<T> _normal;
-
-        // Inverted matrix
-        Matrix3<T> _inv;
     };
 }
