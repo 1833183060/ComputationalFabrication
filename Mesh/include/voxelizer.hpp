@@ -167,7 +167,7 @@ namespace mesh {
             // Initialization
             const int nx = _nvoxel[0], ny = _nvoxel[1], nz = _nvoxel[2];
             const Vector3<T> _pmin_backup = _pmin;
-            auto &&_voxels_backup = std::move(_voxels);
+            auto _voxels_backup = std::move(_voxels);
 
             // Statistics of occupation
             char stat[nx][ny][nz] = {0};
