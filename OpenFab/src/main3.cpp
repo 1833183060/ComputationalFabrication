@@ -10,6 +10,7 @@
 #include <Eigen/Core>
 #include <iostream>
 #include <stack>
+#include <chrono>
 
 // Undoable
 struct State
@@ -18,6 +19,29 @@ struct State
   Eigen::MatrixXd CV, CU;
   bool placing_handles = true;
 } s;
+
+// Timer
+struct Timer
+{
+  void start() {
+    t = std::chrono::high_resolution_clock::now();
+  }
+
+  void end() {
+    const auto &t1 = std::chrono::high_resolution_clock::now();
+    time += std::chrono::duration_cast<std::chrono::duration<double>>(t1 - t).count();
+    if (++counter == timeInterval) {
+      printf("Time per %d iterations: %.6lfs\n", timeInterval, time);
+      counter = 0;
+      time = 0.0;
+    }
+  }
+
+  int counter = 0;
+  int timeInterval = 500;
+  double time = 0.0;
+  std::chrono::high_resolution_clock::time_point t;
+} timer;
 
 int main(int argc, char *argv[])
 {
@@ -57,7 +81,7 @@ int main(int argc, char *argv[])
 
   // Load input meshes
   igl::read_triangle_mesh(
-    (argc>1?argv[1]:"../data/assignment3/decimated-knight.off"),V,F);
+    (argc>1?argv[1]:"../ComputationalFabrication/data/assignment3/decimated-knight.off"),V,F);
   U = V;
   igl::viewer::Viewer viewer;
   std::cout<<R"(
@@ -85,7 +109,9 @@ R,r      Reset control points
     }else
     {
       // SOLVE FOR DEFORMATION
+      timer.start();
       arap_single_iteration(arap_data,arap_K,s.CU,U);
+      timer.end();
       viewer.data.set_vertices(U);
       viewer.data.set_colors(orange);
       viewer.data.set_points(s.CU,blue);

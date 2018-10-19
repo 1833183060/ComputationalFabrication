@@ -63,7 +63,7 @@ void cotmatrix_entries(
                 * (l[2] - (l[0] - l[1]))
                 * (l[2] + (l[0] - l[1]))
                 * (l[0] + (l[1] - l[2]));
-    Scalar dblA = 2.0 * 0.25 * std::sqrt(arg);
+    Scalar dblA = 2.0 * 0.25 * std::sqrt(arg);  // Note: dblA = 2 * area(triangle)
     if(dblA != dblA){
       // NaN
       dblA = 0.0; // C(i, j) = infinity
@@ -114,7 +114,16 @@ void cotmatrix(
   // create sparse matrix entries
   std::vector<Entry> entries;
   entries.reserve(m * 3 * 4);
-  //TODO: Fill in entries  
+  //TODO: Fill in entries
+  for (int i = 0; i < m; i++)
+    for (int j = 0; j < 3; j++) {
+      int id1 = F(i, edges(j, 0));
+      int id2 = F(i, edges(j, 1));
+      entries.emplace_back(Entry(id1, id1, C(i, j)));
+      entries.emplace_back(Entry(id2, id2, C(i, j)));
+      entries.emplace_back(Entry(id1, id2, -C(i, j)));
+      entries.emplace_back(Entry(id2, id1, -C(i, j)));
+    }
   L.setFromTriplets(entries.begin(), entries.end());
 }
 
@@ -123,7 +132,7 @@ void cotmatrix(
  *
  * @param V (nx3) input vertices
  * @param F (mx3) input faces
- * @param C (nxn) input cotangent weight matrix
+ * @param C (mx3) input cotangent weight matrix
  * @param d (1)   input dimension (0, 1, or 2) corresponding to (x, y or z)
  * @param fromRow input starting entry row offset
  * @param fromCol input starting entry column offset
@@ -155,6 +164,18 @@ void arap_linear_block(
     // for each half-edge
     for(int e = 0; e < 3; ++e){
       //TODO: fill in entries here.
+      int id1 = F(i, edges(e, 0));
+      int id2 = F(i, edges(e, 1));
+      int id3 = F(i, 3 - edges(e, 0) - edges(e, 1));
+      const auto &v1 = V(id1, d);
+      const auto &v2 = V(id2, d);
+      const Scalar coeff = 1.0 / 3;
+      entries.emplace_back(Entry(fromRow + id1, fromCol + id1, coeff * C(i, e) * (v1 - v2)));
+      entries.emplace_back(Entry(fromRow + id2, fromCol + id1, coeff * -C(i, e) * (v1 - v2)));
+      entries.emplace_back(Entry(fromRow + id1, fromCol + id2, coeff * C(i, e) * (v1 - v2)));
+      entries.emplace_back(Entry(fromRow + id2, fromCol + id2, coeff * -C(i, e) * (v1 - v2)));
+      entries.emplace_back(Entry(fromRow + id1, fromCol + id3, coeff * C(i, e) * (v1 - v2)));
+      entries.emplace_back(Entry(fromRow + id2, fromCol + id3, coeff * -C(i, e) * (v1 - v2)));
     }
   }
 }
@@ -206,9 +227,17 @@ void arap_precompute(
   SparseMatrix<Scalar> L;
   cotmatrix(V, F, C, L);
 
+  // TODO: Compute data using igl::min_quad_with_fixed_precompute
+  igl::min_quad_with_fixed_precompute(L, b, Eigen::SparseMatrix<Scalar>(), true, data);
+
   // compute K = [Kx, Ky, Kz]
   std::vector<Triplet<Scalar> > entries;
-  //TODO: Compute K (Hint: Use igl::min_quad_with_fixed_precompute)
+  // TODO: Compute K
+  for (int d = 0; d < 3; d++)
+    arap_linear_block(V, F, C, d, 0, d * n, entries);
+
+  K.resize(n, n * 3);
+  K.setFromTriplets(entries.begin(), entries.end());
 }
 
 /**
@@ -252,6 +281,14 @@ void solve_rotations(
   R.resize(3 * nr, 3);
   // for each rotation
   //TODO: compute R
+  for (int i = 0; i < nr; i++) {
+    Mat3 Ci, Rit;
+    for (int d = 0; d < 3; d++)
+      Ci.col(d) = C.col(d * nr + i);
+    igl::polar_svd3x3(Ci, Rit);
+    for (int d = 0; d < 3; d++)
+      R.row(d * nr + i) = Rit.col(d);
+  }
 }
 
 template<typename Scalar, typename Typebc, typename TypeU>
@@ -276,11 +313,16 @@ void arap_single_iteration(
   // local solve: fix vertices, find rotations
 local: {
     //TODO local solve.  Hint: use solve_rotations here
+    Matrix<Scalar, Dynamic, Dynamic> C(3, n * 3);
+    C = U.transpose() * K;
+    solve_rotations(C, R);
   }
 
   // global solve: fix rotations, find vertices
 global: {
     typedef Matrix<Scalar, Dynamic, 1> Vector;
+    typedef Matrix<Scalar, Dynamic, Dynamic> MatrixXd;
     //TODO: global solve.  Hint: use calls to igl::min_quad_with_fixed_solve here.
-    }
+    igl::min_quad_with_fixed_solve(data, -K * R, bc, MatrixXd(), U);
+  }
 }
