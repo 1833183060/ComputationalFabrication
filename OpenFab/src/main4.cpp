@@ -100,10 +100,43 @@ int main(int argc, char *argv[])
     materials::HexDeformableBody<double> hex_def_body(linear_elasticity_material, hex_mesh.vertex(), 0.4, hex_mesh);
 
     //TODO: Students take it from here!
+
+    Eigen::SparseMatrix<double> K = std::move(hex_def_body.ComputeStiffnessMatrix(hex_mesh.vertex()));
     
+    // Beichen Li: test K matrix
+    // Eigen::Matrix<double, num_vertices * 3, num_vertices * 3> K_dense(K);
+    // std::ofstream file("test.txt", std::ios::out);
+    // file << K_dense << std::endl;
+    // file.close();
+
+    const int nx = num_x_vertices;
+    const int ny = num_y_vertices;
+    const int nz = num_z_vertices;
+    
+    // external forces
+    Eigen::VectorXd F_ext(3 * num_vertices);
+    F_ext.setZero();
+    for (int y = 0; y < ny; ++y)
+        F_ext(((nx - 1) * ny + y) * nz * 3 + 2) = -100;
+
+    // add constraints
+    const int num_vertices_con = num_vertices - ny * nz;
+    Eigen::SparseMatrix<double> K_c = std::move(K.bottomRightCorner(3 * num_vertices_con, 3 * num_vertices_con));
+    Eigen::VectorXd F_ext_c = std::move(F_ext.tail(3 * num_vertices_con));
+    Eigen::ConjugateGradient<Eigen::SparseMatrix<double>, Eigen::Upper|Eigen::Lower> cg;
+    cg.compute(K_c);
+
+    // solve deformation
+    Eigen::VectorXd U(3 * num_vertices);
+    U.setZero();
+    U.tail(3 * num_vertices_con) = std::move(cg.solve(F_ext_c));
+    std::cout << "CG iteration: " << cg.iterations() << ", error = " << cg.error() << std::endl;
+    std::cout << U.transpose().eval() << std::endl;
+
+    // show deformed mesh
+    Eigen::Map<Eigen::MatrixXd> U_mat(U.data(), 3, num_vertices);
+    write_voxel_grid("test_deformed.stl", hex_mesh.vertex() + U_mat, hex_mesh.element());
+
     std::cout << "Done with OpenFab!  Have a squishy day." << std::endl;
-
-
-
 
 }

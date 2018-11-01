@@ -53,9 +53,20 @@ namespace materials {
         const typename Material<dim, T>::MatrixDim2T StressDifferential(
                 const typename Material<dim, T>::MatrixDimT& F) const {
 
-            const typename Material<dim, T>::MatrixDim2T zero = Material<dim, T>::MatrixDim2T::Zero();
-            return zero;
+            const T mu = Material<dim, T>::mu();
+            const T lambda = Material<dim, T>::lambda();
 
+            typename Material<dim, T>::MatrixDim2T dPdF = std::move(Material<dim, T>::MatrixDim2T::Identity() * mu);
+
+            int pos = 0;
+            for (int j = 0; j < dim; ++j)
+                for (int i = 0; i < dim; ++i, ++pos)
+                    dPdF(i * dim + j, pos) += mu;
+            for (int j = 0; j < dim; ++j)
+                for (int i = 0; i < dim; ++i)
+                    dPdF(i * (dim + 1), j * (dim + 1)) += lambda;
+
+            return dPdF;
         }
 
     private:
