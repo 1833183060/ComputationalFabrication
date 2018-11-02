@@ -18,6 +18,8 @@
 #include <Eigen/SparseCholesky>
 #include <fstream>
 #include <set>
+#include <string>
+#include <sstream>
 
 
 
@@ -81,8 +83,8 @@ int main(int argc, char *argv[])
     //youngs =  10^7, poisson ratio = 0.45 - similar to that of silicone rubber
     materials::LinearElasticityMaterial<dim, double> linear_elasticity_material(10000000, 0.45);
 
-    const size_t num_x_vertices = 5; //number of nodes (vertices) in x dimension of our mesh
-    const size_t num_y_vertices = 3; //number of nodes (vertices) in y dimension of our mesh
+    const size_t num_x_vertices = 3; //number of nodes (vertices) in x dimension of our mesh
+    const size_t num_y_vertices = 2; //number of nodes (vertices) in y dimension of our mesh
     const size_t num_z_vertices = 2; //number of nodes (vertices) in z dimension of our mesh
 
     const size_t num_vertices = num_x_vertices * num_y_vertices * num_z_vertices;
@@ -104,10 +106,20 @@ int main(int argc, char *argv[])
     Eigen::SparseMatrix<double> K = std::move(hex_def_body.ComputeStiffnessMatrix(hex_mesh.vertex()));
     
     // Beichen Li: test K matrix
-    // Eigen::Matrix<double, num_vertices * 3, num_vertices * 3> K_dense(K);
-    // std::ofstream file("test.txt", std::ios::out);
-    // file << K_dense << std::endl;
-    // file.close();
+    std::ifstream fin("../ComputationalFabrication/data/assignment4/test.txt");
+    std::string line;
+    std::vector<double> K_ref_in;
+    K_ref_in.reserve(num_vertices * 3 * num_vertices * 3);
+    while (std::getline(fin, line)) {
+        std::stringstream sin(line);
+        std::string valstr;
+        while (std::getline(sin, valstr, ','))
+            K_ref_in.push_back(std::stod(valstr));
+    }
+    Eigen::Map<Eigen::MatrixXd> K_ref(K_ref_in.data(), num_vertices * 3, num_vertices * 3);
+    Eigen::Matrix<double, num_vertices * 3, num_vertices * 3> K_dense(K);
+    Eigen::Matrix<double, num_vertices * 3, num_vertices * 3> K_diff = K_ref - K_dense;
+    std::cout << K_diff << std::endl;
 
     const int nx = num_x_vertices;
     const int ny = num_y_vertices;
