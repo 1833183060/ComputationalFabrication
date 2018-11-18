@@ -179,7 +179,7 @@ namespace materials {
             cg.compute(K_con);
             VectorXT U(num_vertices * 3);
             U.setZero();
-            U.tail(num_vertices_def * 3) = cg.solve((perm * F_ext).tail(num_vertices_def * 3));
+            U.tail(num_vertices_def * 3) = cg.solve((perm.transpose() * F_ext).tail(num_vertices_def * 3));
 
             std::cout << "Iterations: " << cg.iterations() << ", Error: " << cg.error() << std::endl;
 
