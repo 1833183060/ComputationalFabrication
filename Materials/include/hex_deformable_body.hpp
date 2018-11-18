@@ -175,13 +175,13 @@ namespace materials {
             // std::cout << K_con_dense << std::endl;
 
             // solve for deformation
-            Eigen::ConjugateGradient<Eigen::SparseMatrix<T>, Eigen::Upper|Eigen::Lower> cg;
+            Eigen::ConjugateGradient<Eigen::SparseMatrix<T>, Eigen::Upper | Eigen::Lower> cg;
             cg.compute(K_con);
             VectorXT U(num_vertices * 3);
             U.setZero();
-            U.tail(num_vertices_def * 3) = cg.solve((perm * F_ext).tail(num_vertices_def * 3));
+            U.tail(num_vertices_def * 3) = cg.solve((perm.transpose() * F_ext).tail(num_vertices_def * 3));
 
-            std::cout << "Iterations: " << cg.iterations() << ", Error: " << cg.error() << std::endl;
+            // std::cout << "Iterations: " << cg.iterations() << ", Error: " << cg.error() << std::endl;
 
             return std::move(perm * U);
         }
@@ -205,9 +205,19 @@ namespace materials {
             U.setZero();
             U.tail(num_vertices_def * 3) = cg.solve(F_ext.tail(num_vertices_def * 3));
 
-            std::cout << "Iterations: " << cg.iterations() << ", Error: " << cg.error() << std::endl;
+            // std::cout << "Iterations: " << cg.iterations() << ", Error: " << cg.error() << std::endl;
 
             return std::move(U);
+        }
+
+        // solve for compliance
+        // [params]
+        //   vec: indices of fixed nodes
+        //   F_ext: external forces
+        T SolveCompliance(const std::vector<int> &vec, const VectorXT &F_ext) {
+            auto &&U = SolveDeformation(vec, F_ext);
+            // std::cout << "Maximum displacement: " << U.template lpNorm<Eigen::Infinity>() << std::endl;
+            return F_ext.dot(U);
         }
 
         //return dphi (the deformation gradient) for a given voxel:
