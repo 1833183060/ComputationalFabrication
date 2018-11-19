@@ -79,6 +79,34 @@ void SolvePerformance(std::string stl_name, double& compliance, double& num_voxe
     double dx = 0.25;
 
     // Your code starts here!!
+    mesh::Voxelizer<double> voxelizer(stl_name, dx);
+    voxelizer.AdvancedVoxelization();
+    materials::HexahedralMesh<double> hex_mesh = std::move(voxelizer.ConvertToHexMesh());
+    const auto &vertex = hex_mesh.vertex();
+    const auto &element = hex_mesh.element();
+    // write_voxel_grid("bridge_test.stl", vertex, element);
+    materials::HexDeformableBody<double> hex_def_body(linear_elasticity_material, vertex, dx, hex_mesh);
+
+    // calculate constraints and external forces
+    Eigen::Vector3d pmin = vertex.col(0), pmax = vertex.col(0);
+    const int N = vertex.cols();
+    for (int i = 0; i < N; ++i) {
+        pmin = pmin.cwiseMin(vertex.col(i));
+        pmax = pmax.cwiseMax(vertex.col(i));
+    }
+    std::vector<int> constraints;
+    for (int i = 0; i < N; ++i)
+        if (vertex.col(i)(0) == pmin(0) || vertex.col(i)(0) == pmax(0))
+            constraints.push_back(i);
+
+    Eigen::VectorXd F_ext(3 * N);
+    F_ext.setZero();
+    for (int i = 0; i < N; ++i)
+        if (vertex.col(i)(2) == pmax(2))
+            F_ext(i * 3 + 2) = -5000;
+
+    compliance = hex_def_body.SolveCompliance(constraints, F_ext);
+    num_voxels = element.cols();
 }
 
 int main(int argc, char *argv[])
@@ -162,43 +190,45 @@ int main(int argc, char *argv[])
 
     // Once you debug the bridge example correct, comment the code before dash line
     // and uncomment the code after dash line to run the test on 121 bridges
-    SolvePerformance(PROJECT_SOURCE_DIR"/data/assignment6/bridge.stl", compliance, num_voxels);
+    // SolvePerformance(PROJECT_SOURCE_DIR"/data/assignment6/bridge.stl", compliance, num_voxels);
+    // SolvePerformance(PROJECT_SOURCE_DIR"/CSG/assn6_meshes/bridge_r_40_o_-25.stl", compliance, num_voxels);
+    // std::cout << compliance << " " << num_voxels << std::endl;
     // -----------------------------------------------------------------------
-    // std::string base(PROJECT_SOURCE_DIR"/CSG/assn6_meshes/bridge");
-    // int radius_start = 30;
-    // int radius_end   = 40;
-    // int offset_start = -30;
-    // int offset_end   = -20;
+    std::string base(PROJECT_SOURCE_DIR"/CSG/assn6_meshes/bridge");
+    int radius_start = 30;
+    int radius_end   = 40;
+    int offset_start = -30;
+    int offset_end   = -20;
 
-    // std::ofstream file4;
-    // file4.open("q4_result.txt");
-    // file4 << "print Q4 test result" << std::endl << std::endl;
+    std::ofstream file4;
+    file4.open("q4_result.txt");
+    file4 << "print Q4 test result" << std::endl << std::endl;
 
-    // int count = 0;
-    // for (int r = radius_start; r <= radius_end; r++) {
-    //     for (int o = offset_start; o <= offset_end; o++) {
-    //         std::string mesh_name = base + "_r_" + std::to_string(r) + "_o_" + std::to_string(o);
-    //         std::cout << "bridge_r_" + std::to_string(r) + "_o_" + std::to_string(o) << std::endl;
-    //         SolvePerformance(mesh_name, compliance, num_voxels);
-    //         p4_input.push_back(Eigen::Vector2d(compliance, num_voxels));
-    //         file4 << "bridge_r_" + std::to_string(r) + "_o_" + std::to_string(o) + ".stl" << std::endl;
-    //         file4 << "Compliance: " +  std::to_string(compliance) << std::endl;
-    //         file4 << "Total mass: " + std::to_string(num_voxels) << std::endl << std::endl;
-    //         count++;
-    //     }
-    // }
-    // file4.close();
+    int count = 0;
+    for (int r = radius_start; r <= radius_end; r++) {
+        for (int o = offset_start; o <= offset_end; o++) {
+            std::string mesh_name = base + "_r_" + std::to_string(r) + "_o_" + std::to_string(o) + ".stl";
+            std::cout << "bridge_r_" + std::to_string(r) + "_o_" + std::to_string(o) << std::endl;
+            SolvePerformance(mesh_name, compliance, num_voxels);
+            p4_input.push_back(Eigen::Vector2d(compliance, num_voxels));
+            file4 << "bridge_r_" + std::to_string(r) + "_o_" + std::to_string(o) + ".stl" << std::endl;
+            file4 << "Compliance: " +  std::to_string(compliance) << std::endl;
+            file4 << "Total mass: " + std::to_string(num_voxels) << std::endl << std::endl;
+            count++;
+        }
+    }
+    file4.close();
 
-    // std::vector<Eigen::Vector2d> p4_result = geometry::ParetoFront2D(p4_input);
-    // // print Q4 results
-    // file4.open("q4_pareto_front_result.txt");
-    // file4 << "print Q4 pareto front result" << std::endl;
-    // file4 << "Totol number of points: " << p4_result.size() << std::endl;
-    // for (int i = 0; i < p4_result.size(); i++) {
-    //     file4 << "P" << i << ": " << std::endl;
-    //     file4 << p4_result[i] << std::endl;
-    // }
-    // file4.close();    
+    std::vector<Eigen::Vector2d> p4_result = geometry::ParetoFront2D(p4_input);
+    // print Q4 results
+    file4.open("q4_pareto_front_result.txt");
+    file4 << "print Q4 pareto front result" << std::endl;
+    file4 << "Totol number of points: " << p4_result.size() << std::endl;
+    for (int i = 0; i < p4_result.size(); i++) {
+        file4 << "P" << i << ": " << std::endl;
+        file4 << p4_result[i] << std::endl;
+    }
+    file4.close();    
 
     return 0;
 }

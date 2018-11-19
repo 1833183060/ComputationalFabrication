@@ -19,6 +19,9 @@
 #include <fstream>
 #include <set>
 
+#include "voxelizer.hpp"
+
+#define STR(x)  #x
 
 
 void write_facet(std::ofstream& file, Eigen::Vector3d p0, Eigen::Vector3d p1, Eigen::Vector3d p2) {
@@ -100,10 +103,82 @@ int main(int argc, char *argv[])
     materials::HexDeformableBody<double> hex_def_body(linear_elasticity_material, hex_mesh.vertex(), 0.4, hex_mesh);
 
     //TODO: Students take it from here!
+
+    /// Simulation on uniform grid
+
+    // test stiffness matrix
+    // std::cout << "Maximum error: " <<
+    //     hex_def_body.TestStiffnessMatrix("../ComputationalFabrication/data/assignment4/test.txt") << std::endl;
     
+    // external forces
+    const int nx = num_x_vertices;
+    const int ny = num_y_vertices;
+    const int nz = num_z_vertices;
+    Eigen::VectorXd F_ext(3 * num_vertices);
+    F_ext.setZero();
+    for (int y = 0; y < ny; ++y)
+        F_ext(((nx - 1) * ny + y) * nz * 3 + 2) = -100;
+
+    // solve deformation
+    Eigen::VectorXd U = std::move(hex_def_body.SolveDeformation(ny * nz, F_ext));
+    // std::cout << U.transpose().eval() << std::endl;
+
+    // show deformed mesh
+    Eigen::Map<Eigen::MatrixXd> U_mat(U.data(), 3, num_vertices);
+    write_voxel_grid("test_deformed.stl", hex_mesh.vertex() + U_mat, hex_mesh.element());
+
+    /// Simulation on customized mesh
+
+    // import mesh from file
+    mesh::Voxelizer<double> voxelizer("../ComputationalFabrication/data/assignment2/fandisk.stl", 0.4);
+    voxelizer.AdvancedVoxelization();
+    materials::HexahedralMesh<double> hex_mesh_c = std::move(voxelizer.ConvertToHexMesh());
+    
+    // write initial mesh
+    write_voxel_grid("test_c.stl", hex_mesh_c.vertex(), hex_mesh_c.element());
+    // std::cout << "Vertices: " << hex_mesh_c.vertex().cols() << std::endl;
+    // std::cout << "Elements: " << hex_mesh_c.element().cols() << std::endl;
+    // std::cout << hex_mesh_c.element() << std::endl;
+
+    materials::HexDeformableBody<double> hex_def_body_c(linear_elasticity_material, hex_mesh_c.vertex(), 0.4, hex_mesh_c);
+
+    // Eigen::SparseMatrix<double> K_c = hex_def_body_c.StiffnessMatrix();
+    // Eigen::MatrixXd K_dense_c(K_c);
+    // std::cout << K_dense_c << std::endl;
+
+    // add constraints (set points with minimal z coordinates to be fixed)
+    const auto &vertex_c = hex_mesh_c.vertex();
+    const int num_vertices_c = vertex_c.cols();
+    Eigen::Vector3d pmin = vertex_c.col(0);
+    Eigen::Vector3d pmax = vertex_c.col(0);
+    for (int i = 1; i < num_vertices_c; ++i) {
+        pmin = std::move(pmin.cwiseMin(vertex_c.col(i)));
+        pmax = std::move(pmax.cwiseMax(vertex_c.col(i)));
+    }
+    std::vector<int> vertices_con;
+    vertices_con.reserve(32);
+    for (int i = 0; i < num_vertices_c; ++i)
+        if (vertex_c(2, i) == pmin(2))
+            vertices_con.push_back(i);
+
+    std::cout << "Constraints: " << vertices_con.size() << std::endl;
+
+    // external forces (apply force in z direction to points with maximal x coordinates)
+    Eigen::VectorXd F_ext_c(3 * num_vertices_c);
+    F_ext_c.setZero();
+    for (int i = 0; i < num_vertices_c; ++i)
+        if (vertex_c(1, i) == pmax(1))
+            F_ext_c(i * 3 + 2) = 5000;
+
+    // solve deformation
+    Eigen::VectorXd U_c = std::move(hex_def_body_c.SolveDeformation(vertices_con, F_ext_c));
+    std::cout << "Maximum displacement: " << U_c.lpNorm<Eigen::Infinity>() << std::endl;
+
+    // show deformed mesh
+    Eigen::Map<Eigen::MatrixXd> U_mat_c(U_c.data(), 3, num_vertices_c);
+    write_voxel_grid("test_c_deformed.stl", vertex_c + U_mat_c, hex_mesh_c.element());
+
+
     std::cout << "Done with OpenFab!  Have a squishy day." << std::endl;
-
-
-
 
 }
