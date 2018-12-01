@@ -228,7 +228,13 @@ int main(int argc, char *argv[])
         file4 << "P" << i << ": " << std::endl;
         file4 << p4_result[i] << std::endl;
     }
-    file4.close();    
+    file4.close();
+
+    // print data for visualization
+    file4.open("result.txt");
+    for (auto &v : p4_input)
+        file4 << v(0) << " " << v(1) << std::endl;
+    file4.close();
 
     return 0;
 }
